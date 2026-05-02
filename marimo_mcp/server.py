@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import asyncio
 import os
 from collections.abc import Awaitable
 
@@ -64,6 +65,8 @@ async def create_notebook(path: str) -> str:
         create_notebook_file(path)
         return f"Created notebook at {path}"
     except FileExistsError as e:
+        return f"Error: {e}"
+    except OSError as e:
         return f"Error: {e}"
 
 
@@ -175,8 +178,6 @@ async def edit_and_run_cell(notebook: str, cell_id: str, code: str) -> str:
         cell_id: The cell ID to edit (get IDs from get_cells first).
         code: New Python code for the cell.
     """
-    import asyncio
-
     async def _run() -> str:
         nb = await resolve_notebook(notebook, _token())
         client = _client(nb.port, nb.session_id)

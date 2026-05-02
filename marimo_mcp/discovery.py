@@ -49,8 +49,8 @@ def _find_marimo_ports() -> list[int]:
             cmdline = proc.info["cmdline"] or []
             if not any("marimo" in part for part in cmdline):
                 continue
-            port = _extract_port(cmdline)
-            if port and port not in seen:
+            port = _extract_port(cmdline) or 2718
+            if port not in seen:
                 ports.append(port)
                 seen.add(port)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
@@ -102,13 +102,13 @@ async def resolve_notebook(notebook: str, token: str | None = None) -> NotebookI
     notebooks = await discover_notebooks(token)
     try:
         port = int(notebook)
+    except ValueError:
+        pass
+    else:
         for nb in notebooks:
             if nb.port == port:
                 return nb
         raise ValueError(f"No running notebook found on port {port}")
-    except ValueError as exc:
-        if "No running notebook" in str(exc):
-            raise
     for nb in notebooks:
         if nb.path == notebook or nb.path.endswith("/" + notebook):
             return nb
