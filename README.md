@@ -3,24 +3,25 @@
 A single MCP server that auto-discovers all running [marimo](https://marimo.io) notebooks
 and exposes tools for reading, editing, and running cells — no `--mcp` flag required.
 
-## Install
+## Run locally
+
+From the project directory:
 
 ```bash
-pip install marimo-mcp
-# or with uvx (no install needed):
-uvx marimo-mcp
+uv run marimo-mcp
 ```
 
 ## Configure in VS Code / Claude
 
-Add to your MCP settings:
+Add to your MCP settings (`.vscode/mcp.json` or Claude Code settings):
 
 ```json
 {
   "mcpServers": {
     "marimo": {
-      "command": "uvx",
-      "args": ["marimo-mcp"],
+      "command": "uv",
+      "args": ["run", "marimo-mcp"],
+      "cwd": "/path/to/marimo-mcp",
       "env": {
         "MARIMO_TOKEN": "your-token-if-needed"
       }
@@ -29,7 +30,8 @@ Add to your MCP settings:
 }
 ```
 
-No token needed if marimo is running locally with default settings.
+`MARIMO_TOKEN` нужен только если marimo запущен с токеном.
+Проверить: `curl -X POST http://localhost:PORT/api/home/running_notebooks` — 200 = ок, 403 = нужен токен.
 
 ## Tools
 
