@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 _TEMPLATE = '''\
 import marimo
 
@@ -18,7 +20,6 @@ if __name__ == "__main__":
 
 
 def create_notebook_file(path: str) -> None:
-    import os
     if os.path.exists(path):
         raise FileExistsError(f"File already exists: {path}")
     with open(path, "w") as f:
