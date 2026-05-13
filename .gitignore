@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Node
+node_modules/
+dist/extension.js.map
+
+# Marimo
+__marimo__/
+
+# Dev tools
+.serena/
+.mcp.json
+
+# Scratch / test notebooks
+goyda.py
+goyda_test.py
+nogoyda.py
+marimo-mcp-bridge/nogoyda.py

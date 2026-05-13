@@ -1,0 +1,21 @@
+{
+  "name": "marimo-mcp-bridge",
+  "displayName": "marimo MCP Bridge",
+  "description": "HTTP bridge so marimo-mcp can control VS Code-managed marimo notebooks",
+  "version": "0.1.0",
+  "publisher": "marimo-mcp",
+  "engines": { "vscode": "^1.80.0" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {},
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "build": "node esbuild.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}
