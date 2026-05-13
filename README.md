@@ -220,7 +220,7 @@ asyncio.run(main())
 uv run pytest tests/ -v
 ```
 
-21 tests should pass, covering `MarimoClient`, `discovery` logic, and notebook creation.
+25 tests should pass, covering `MarimoClient`, `discovery` logic, and notebook creation.
 
 ---
 
