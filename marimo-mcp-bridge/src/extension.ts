@@ -291,16 +291,19 @@ async function callMarimoApi(
             code: string;
         };
         const executable = await getPythonExecutable(notebookUri);
+        // Snapshot outputs before execution to detect changes
+        const before = JSON.stringify(getCellOutputs(notebookUri, cellId));
         await vscode.commands.executeCommand('marimo.api', {
             method: 'execute-cells',
             params: { notebookUri, executable, inner: { cellIds: [cellId], codes: [code] } },
         });
+        // Poll until outputs change from pre-execution state (handles both empty→filled and stale→updated)
         const deadline = Date.now() + 15000;
         while (Date.now() < deadline) {
             await new Promise<void>(r => setTimeout(r, 300));
-            const result = getCellOutputs(notebookUri, cellId) as { outputs?: unknown[]; error?: string };
-            if (result.outputs && result.outputs.length > 0) {
-                return result;
+            const current = JSON.stringify(getCellOutputs(notebookUri, cellId));
+            if (current !== before) {
+                return getCellOutputs(notebookUri, cellId);
             }
         }
         return getCellOutputs(notebookUri, cellId);
