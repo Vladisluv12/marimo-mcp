@@ -1,5 +1,17 @@
 import pytest
-from marimo_mcp.discovery import _extract_port
+from unittest.mock import patch
+import respx
+import httpx
+
+from marimo_mcp.discovery import (
+    NotebookInfo,
+    _clear_cache,
+    _extract_port,
+    discover_notebooks,
+    resolve_notebook,
+)
+
+_SERVER_TOKEN_HTML = '<marimo-server-token data-token="tok-abc" hidden></marimo-server-token>'
 
 
 def test_extract_port_flag_space():
@@ -27,16 +39,6 @@ def test_extract_port_invalid_value():
     assert _extract_port(cmdline) is None
 
 
-import asyncio
-import time
-from unittest.mock import MagicMock, patch
-
-import respx
-import httpx
-
-from marimo_mcp.discovery import NotebookInfo, discover_notebooks, resolve_notebook, _clear_cache
-
-
 @pytest.fixture(autouse=True)
 def clear_cache():
     _clear_cache()
@@ -44,9 +46,20 @@ def clear_cache():
     _clear_cache()
 
 
+@pytest.fixture(autouse=True)
+def no_bridge(monkeypatch):
+    """Disable LSP bridge in all discovery tests."""
+    async def _unavailable():
+        return False
+    monkeypatch.setattr("marimo_mcp.lsp_client.bridge_available", _unavailable)
+
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_discover_notebooks_returns_running():
+    respx.get("http://localhost:2718/").mock(
+        return_value=httpx.Response(200, text=_SERVER_TOKEN_HTML)
+    )
     respx.post("http://localhost:2718/api/home/running_notebooks").mock(
         return_value=httpx.Response(200, json={
             "files": [{"name": "nb.py", "path": "/home/user/nb.py", "sessionId": "abc123"}]
@@ -64,7 +77,7 @@ async def test_discover_notebooks_returns_running():
 @respx.mock
 @pytest.mark.asyncio
 async def test_discover_notebooks_skips_unreachable_port():
-    respx.post("http://localhost:9999/api/home/running_notebooks").mock(
+    respx.get("http://localhost:9999/").mock(
         side_effect=httpx.ConnectError("refused")
     )
     with patch("marimo_mcp.discovery._find_marimo_ports", return_value=[9999]):
@@ -76,6 +89,9 @@ async def test_discover_notebooks_skips_unreachable_port():
 @respx.mock
 @pytest.mark.asyncio
 async def test_discover_notebooks_skips_missing_session_id():
+    respx.get("http://localhost:2718/").mock(
+        return_value=httpx.Response(200, text=_SERVER_TOKEN_HTML)
+    )
     respx.post("http://localhost:2718/api/home/running_notebooks").mock(
         return_value=httpx.Response(200, json={
             "files": [{"name": "nb.py", "path": "/home/user/nb.py", "sessionId": None}]
@@ -90,6 +106,9 @@ async def test_discover_notebooks_skips_missing_session_id():
 @respx.mock
 @pytest.mark.asyncio
 async def test_discover_notebooks_uses_cache():
+    respx.get("http://localhost:2718/").mock(
+        return_value=httpx.Response(200, text=_SERVER_TOKEN_HTML)
+    )
     respx.post("http://localhost:2718/api/home/running_notebooks").mock(
         return_value=httpx.Response(200, json={
             "files": [{"name": "nb.py", "path": "/home/user/nb.py", "sessionId": "abc"}]
@@ -104,6 +123,9 @@ async def test_discover_notebooks_uses_cache():
 @respx.mock
 @pytest.mark.asyncio
 async def test_resolve_by_path():
+    respx.get("http://localhost:2718/").mock(
+        return_value=httpx.Response(200, text=_SERVER_TOKEN_HTML)
+    )
     respx.post("http://localhost:2718/api/home/running_notebooks").mock(
         return_value=httpx.Response(200, json={
             "files": [{"name": "nb.py", "path": "/home/user/nb.py", "sessionId": "abc123"}]
@@ -118,6 +140,9 @@ async def test_resolve_by_path():
 @respx.mock
 @pytest.mark.asyncio
 async def test_resolve_by_port():
+    respx.get("http://localhost:2718/").mock(
+        return_value=httpx.Response(200, text=_SERVER_TOKEN_HTML)
+    )
     respx.post("http://localhost:2718/api/home/running_notebooks").mock(
         return_value=httpx.Response(200, json={
             "files": [{"name": "nb.py", "path": "/home/user/nb.py", "sessionId": "abc123"}]
@@ -132,6 +157,9 @@ async def test_resolve_by_port():
 @respx.mock
 @pytest.mark.asyncio
 async def test_resolve_not_found_raises():
+    respx.get("http://localhost:2718/").mock(
+        return_value=httpx.Response(200, text=_SERVER_TOKEN_HTML)
+    )
     respx.post("http://localhost:2718/api/home/running_notebooks").mock(
         return_value=httpx.Response(200, json={"files": []})
     )
