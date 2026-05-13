@@ -268,7 +268,6 @@ async def delete_cell(notebook: str, cell_id: str) -> str:
     return await _safe(_run())
 
 
-
 @mcp.tool()
 async def add_cell(notebook: str, code: str, after_cell_id: str | None = None) -> str:
     """Add a new cell to a notebook without executing it.
