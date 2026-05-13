@@ -1,3 +1,4 @@
+import json
 import string
 
 import pytest
@@ -39,7 +40,6 @@ async def test_invoke_tool_sends_tool_name_camel(client):
         return_value=httpx.Response(200, json={})
     )
     await client.invoke_tool("get_cell_outputs", {"sessionId": "s"})
-    import json
     body = json.loads(route.calls[0].request.content)
     assert body["toolName"] == "get_cell_outputs"
 
@@ -60,7 +60,6 @@ async def test_run_cells_sends_camel_keys(client):
         return_value=httpx.Response(200, json={"success": True})
     )
     await client.run_cells(["cell-1"], ["x = 42"])
-    import json
     body = json.loads(route.calls[0].request.content)
     assert "cellIds" in body
     assert "codes" in body
@@ -106,7 +105,6 @@ def test_generate_cell_id_unique():
 @respx.mock
 @pytest.mark.asyncio
 async def test_create_cell_sends_transaction(client):
-    import json
     route = respx.post("http://localhost:2718/api/document/transaction").mock(
         return_value=httpx.Response(200, json={"success": True})
     )
@@ -122,7 +120,6 @@ async def test_create_cell_sends_transaction(client):
 @respx.mock
 @pytest.mark.asyncio
 async def test_create_cell_before_none_appends(client):
-    import json
     route = respx.post("http://localhost:2718/api/document/transaction").mock(
         return_value=httpx.Response(200, json={"success": True})
     )
