@@ -148,8 +148,16 @@ function getCellOutputs(notebookUri, cellId) {
             continue;
         const outputs = cell.outputs.map(output => ({
             items: output.items.map(item => {
-                const text = Buffer.from(item.data).toString('utf-8');
-                return { mime: item.mime, text };
+                const isText = item.mime.startsWith('text/')
+                    || item.mime === 'application/json'
+                    || item.mime === 'application/vnd.code.notebook.stdout'
+                    || item.mime === 'application/vnd.code.notebook.stderr';
+                if (isText) {
+                    return { mime: item.mime, text: Buffer.from(item.data).toString('utf-8') };
+                }
+                else {
+                    return { mime: item.mime, base64: Buffer.from(item.data).toString('base64') };
+                }
             }),
         }));
         return { cellId, outputs };
@@ -255,6 +263,23 @@ async function callMarimoApi(method, params) {
         edit.set(doc.uri, [vscode.NotebookEdit.insertCells(insertIndex, [newCell])]);
         const success = await vscode.workspace.applyEdit(edit);
         return success ? { cellId } : null;
+    }
+    else if (method === 'execute-and-poll-outputs') {
+        const { notebookUri, cellId, code } = params;
+        const executable = await getPythonExecutable(notebookUri);
+        await vscode.commands.executeCommand('marimo.api', {
+            method: 'execute-cells',
+            params: { notebookUri, executable, inner: { cellIds: [cellId], codes: [code] } },
+        });
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+            await new Promise(r => setTimeout(r, 300));
+            const result = getCellOutputs(notebookUri, cellId);
+            if (result.outputs && result.outputs.length > 0) {
+                return result;
+            }
+        }
+        return getCellOutputs(notebookUri, cellId);
     }
     else {
         commandParams = params;

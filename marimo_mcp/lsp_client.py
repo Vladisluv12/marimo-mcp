@@ -106,6 +106,19 @@ def format_output(result: dict) -> str:
     return "\n".join(parts) if parts else "(no output)"
 
 
+async def execute_and_get_visual_output(
+    notebook_uri: str,
+    cell_id: str,
+    code: str,
+) -> dict:
+    result = await call_api("execute-and-poll-outputs", {
+        "notebookUri": notebook_uri,
+        "cellId": cell_id,
+        "code": code,
+    })
+    return result if isinstance(result, dict) else {}
+
+
 async def delete_cell_lsp(notebook_uri: str, cell_id: str) -> object:
     return await call_api("delete-cell", {
         "notebookUri": notebook_uri,
