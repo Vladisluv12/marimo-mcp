@@ -287,9 +287,10 @@ async def add_cell(notebook: str, code: str, after_cell_id: str | None = None) -
             return json.dumps({"cell_id": cell_id})
 
         # HTTP: translate after_cell_id → before_cell_id using cell order
+        client = _client(nb)
         before_cell_id: str | None = None
         if after_cell_id is not None:
-            runtime_data = await _client(nb).invoke_tool(
+            runtime_data = await client.invoke_tool(
                 "get_cell_runtime_data",
                 {"sessionId": nb.session_id, "cellIds": []},
             )
@@ -300,7 +301,7 @@ async def add_cell(notebook: str, code: str, after_cell_id: str | None = None) -
             idx = cell_ids_ordered.index(after_cell_id)
             before_cell_id = cell_ids_ordered[idx + 1] if idx + 1 < len(cell_ids_ordered) else None
 
-        await _client(nb).create_cell(cell_id, code, before_cell_id)
+        await client.create_cell(cell_id, code, before_cell_id)
         return json.dumps({"cell_id": cell_id})
 
     return await _safe(_run())
