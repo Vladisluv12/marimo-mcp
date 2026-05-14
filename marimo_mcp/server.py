@@ -299,7 +299,7 @@ async def add_cell(
         cell_id = generate_cell_id()
 
         actual_code = (
-            f'mo.md(r"""\n{code}\n""")'
+            f'mo.md(\n    """\n{code}\n    """\n)'
             if cell_type == "markdown"
             else code
         )
