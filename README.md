@@ -37,9 +37,7 @@ Claude / MCP client
 
 **VS Code backend — how cell execution works:**
 
-marimo's VS Code extension does not expose an HTTP server. The bridge extension (`marimo-mcp-bridge`) fills this gap — it runs a small HTTP server inside VS Code and forwards calls to `vscode.commands.executeCommand('marimo.api', ...)`.
-
-Because VS Code notebooks don't expose cell outputs through the notebook API after execution, the bridge wraps executed code to redirect `stdout`/`stderr` into a JSON file in `/tmp`, which the MCP server polls until results appear (up to 15 s). This means `edit_and_run_cell` returns actual stdout/stderr output — just like a terminal. Rich outputs (plots, dataframes) are not available via VS Code mode; use the HTTP backend for those.
+marimo's VS Code extension does not expose an HTTP server. The bridge extension (`marimo-mcp-bridge`) fills this gap — it runs a small HTTP server inside VS Code and forwards calls through VS Code's notebook execution pipeline (`notebook.cell.execute` → `executeHandler` → marimo LSP → kernel). This means `edit_and_run_cell` updates the cell visually in VS Code and returns actual stdout/stderr output.
 
 **VS Code backend — `get_deps` and `get_variables`:**
 
@@ -64,12 +62,12 @@ uv sync          # creates .venv and installs all dependencies
 ```bash
 cd marimo-mcp-bridge
 npm install
-npm run build    # produces dist/extension.js
+bash install.sh  # compiles TypeScript, packages as VSIX, installs in VS Code
 ```
 
-Install in VS Code for development: open the `marimo-mcp-bridge` folder, press `F5` to launch an Extension Development Host. The bridge auto-starts when VS Code loads (`onStartupFinished` activation event).
+After installing, reload VS Code window (`Developer: Reload Window`).
 
-For a permanent install, use **Developer: Install Extension from Location...** in the Command Palette and select the `marimo-mcp-bridge` folder.
+For subsequent updates after code changes, just run `bash install.sh` again.
 
 ---
 
@@ -116,15 +114,38 @@ By default marimo generates a random access token. Either:
 | `get_errors` | ✓ | — | All errors grouped by cell |
 | `get_variables` | ✓ (with values) | ✓ (names/kinds only) | Variables in the notebook |
 | `get_deps` | ✓ | ✓ | Cell dependency graph |
-| `add_cell` | ✓ | ✓ | Add a new cell (not executed); returns `cell_id` |
+| `add_cell` | ✓ | ✓ | Add a new cell (not executed); `cell_type="markdown"` for markup |
 | `edit_and_run_cell` | ✓ | ✓ | Edit a cell and run it, returns stdout/stderr |
 | `delete_cell` | ✓ | ✓ | Delete a cell |
 
-`get_cell_outputs` and `get_errors` return an explicit error for VS Code notebooks. Use `edit_and_run_cell` with `print()` calls to inspect values.
+`get_cell_outputs` and `get_errors` return an explicit error for VS Code notebooks.
+Use `edit_and_run_cell` with `print()` calls to inspect values.
+
+### `add_cell` parameters
+
+```
+add_cell(notebook, code, after_cell_id=None, cell_type="code")
+```
+
+- `cell_type="code"` — standard Python cell (default)
+- `cell_type="markdown"` — markdown cell; in VS Code uses native `NotebookCellKind.Markup`
+  (renders immediately without execution); in HTTP mode wraps in `mo.md(...)`
 
 ### Current limitations
 
-- **VS Code output is stdout/stderr only** — rich outputs (plots, dataframes, marimo UI elements) are not captured via the bridge. Use the HTTP backend (`marimo edit --no-token`) for full output access.
+- **VS Code output is stdout/stderr only** — rich outputs (plots, dataframes, marimo UI elements)
+  are not captured via the bridge. Use the HTTP backend (`marimo edit --no-token`) for full output access.
+
+---
+
+## Claude Code skill
+
+A Claude Code skill for working with this MCP server is available at
+`~/.claude/plugins/marketplaces/marimo-mcp/SKILL.md`. It's enabled automatically
+when the `marimo-mcp@marimo-mcp` plugin is active in your Claude Code settings.
+
+This skill is complementary to [`marimo-pair`](https://github.com/marimo-team/marimo-pair)
+(which handles `marimo edit` HTTP mode). Use `marimo-mcp` when the notebook is open in VS Code.
 
 ---
 
@@ -162,7 +183,7 @@ async def main():
     cells = await get_cells('test_notebook.py')
     # get a cell_id from the output
     result = await edit_and_run_cell('test_notebook.py', 'CELL_ID', 'x = 6 * 7\nprint(x)')
-    print(result)  # {"stdout": "42\n", ...}
+    print(result)  # {"output": "42", "stdout": "42\n", ...}
 
 asyncio.run(main())
 ```
@@ -199,19 +220,6 @@ async def main():
 asyncio.run(main())
 ```
 
-**Static analysis (no kernel needed):**
-
-```python
-import asyncio
-from marimo_mcp.server import get_deps, get_variables
-
-async def main():
-    print(await get_deps('goyda.py'))
-    print(await get_variables('goyda.py'))
-
-asyncio.run(main())
-```
-
 ---
 
 ### Test 3: Unit tests
@@ -236,12 +244,20 @@ uv run pytest tests/ -v
 - Check the VS Code Output panel for "marimo-mcp-bridge" channel
 - Make sure a `.py` marimo notebook is open — the `marimo.api` command is only available when the marimo extension is active
 
+**Bridge needs reinstalling after code changes:**
+
+```bash
+cd marimo-mcp-bridge
+bash install.sh
+# Then: Developer: Reload Window in VS Code
+```
+
 **`edit_and_run_cell` returns empty output or times out (VS Code):**
 
-The cell execution output is captured via a temp file (`/tmp/marimo_mcp_{cell_id}.json`). If it stays empty:
-1. Check `/debug` endpoint to confirm Python executable has marimo installed
-2. Check VS Code Output → marimo for kernel startup errors
-3. Default timeout is 15 s — increase it in `execute_and_get_output` if the kernel is slow
+The cell execution uses VS Code's notebook pipeline. If it times out (15s default):
+1. Check VS Code Output → marimo for kernel startup errors
+2. Make sure the notebook is open and visible (not just in the background)
+3. Try running a cell manually first to warm up the kernel
 
 **Wrong Python executable (kernel fails to start):**
 
