@@ -271,9 +271,11 @@ async def delete_cell(notebook: str, cell_id: str) -> str:
         nb = await resolve_notebook(notebook, _token())
         if nb.is_lsp:
             await lsp_client.delete_cell_lsp(nb.notebook_uri, cell_id)
+            _clear_cache()
             return f"Deleted cell {cell_id}"
         client = _client(nb)
         await client.delete_cell(cell_id, nb.path)
+        _clear_cache()
         return f"Deleted cell {cell_id}"
 
     return await _safe(_run())
@@ -299,8 +301,14 @@ async def add_cell(
         cell_id = generate_cell_id()
 
         if nb.is_lsp:
+            # VS Code: validate after_cell_id exists before inserting
+            if after_cell_id is not None:
+                current_cells = nb.lsp_cells
+                if not any(c.get("cellId") == after_cell_id for c in current_cells):
+                    raise ValueError(f"Cell {after_cell_id!r} not found in notebook")
             # VS Code: use native Markup cell kind — renders markdown directly
             await lsp_client.add_cell_lsp(nb.notebook_uri, cell_id, code, after_cell_id, cell_type)
+            _clear_cache()
             return json.dumps({"cell_id": cell_id})
 
         # HTTP: store as mo.md(...) Python code
