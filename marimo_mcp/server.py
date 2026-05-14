@@ -298,15 +298,17 @@ async def add_cell(
         nb = await resolve_notebook(notebook, _token())
         cell_id = generate_cell_id()
 
+        if nb.is_lsp:
+            # VS Code: use native Markup cell kind — renders markdown directly
+            await lsp_client.add_cell_lsp(nb.notebook_uri, cell_id, code, after_cell_id, cell_type)
+            return json.dumps({"cell_id": cell_id})
+
+        # HTTP: store as mo.md(...) Python code
         actual_code = (
             f'mo.md(\n    """\n{code}\n    """\n)'
             if cell_type == "markdown"
             else code
         )
-
-        if nb.is_lsp:
-            await lsp_client.add_cell_lsp(nb.notebook_uri, cell_id, actual_code, after_cell_id)
-            return json.dumps({"cell_id": cell_id})
 
         # HTTP: translate after_cell_id → before_cell_id using cell order
         client = _client(nb)

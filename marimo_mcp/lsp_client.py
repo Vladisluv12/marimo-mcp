@@ -132,10 +132,11 @@ async def delete_cell_lsp(notebook_uri: str, cell_id: str) -> object:
     })
 
 
-async def add_cell_lsp(notebook_uri: str, cell_id: str, code: str, after_cell_id: str | None) -> dict:
+async def add_cell_lsp(notebook_uri: str, cell_id: str, code: str, after_cell_id: str | None, cell_type: str = "code") -> dict:
     return await call_api("add-cell", {
         "notebookUri": notebook_uri,
         "cellId": cell_id,
         "code": code,
         "afterCellId": after_cell_id,
+        "cellType": cell_type,
     })

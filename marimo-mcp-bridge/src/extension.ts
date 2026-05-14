@@ -254,11 +254,12 @@ async function callMarimoApi(
         throw new Error(`Cell ${cellId} not found in ${notebookUri}`);
 
     } else if (method === 'add-cell') {
-        const { notebookUri, cellId, code, afterCellId } = params as {
+        const { notebookUri, cellId, code, afterCellId, cellType = 'code' } = params as {
             notebookUri: string;
             cellId: string;
             code: string;
             afterCellId: string | null;
+            cellType?: string;
         };
         const doc = vscode.workspace.notebookDocuments.find(
             d => d.uri.toString() === notebookUri
@@ -277,7 +278,12 @@ async function callMarimoApi(
             }
         }
 
-        const newCell = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, code, 'python');
+        const isMarkdown = cellType === 'markdown';
+        const newCell = new vscode.NotebookCellData(
+            isMarkdown ? vscode.NotebookCellKind.Markup : vscode.NotebookCellKind.Code,
+            code,
+            isMarkdown ? 'markdown' : 'python'
+        );
         newCell.metadata = { stableId: cellId };
         const edit = new vscode.WorkspaceEdit();
         edit.set(doc.uri, [vscode.NotebookEdit.insertCells(insertIndex, [newCell])]);
