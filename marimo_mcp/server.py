@@ -280,20 +280,32 @@ async def delete_cell(notebook: str, cell_id: str) -> str:
 
 
 @mcp.tool()
-async def add_cell(notebook: str, code: str, after_cell_id: str | None = None) -> str:
+async def add_cell(
+    notebook: str,
+    code: str,
+    after_cell_id: str | None = None,
+    cell_type: str = "code",
+) -> str:
     """Add a new cell to a notebook without executing it.
 
     Args:
         notebook: Path to the notebook file or port number.
-        code: Python code for the new cell (can be empty string).
+        code: Content for the new cell.
         after_cell_id: Insert after this cell ID. If None, appends at end.
+        cell_type: "code" (default) or "markdown". Markdown wraps content in mo.md(...).
     """
     async def _run() -> str:
         nb = await resolve_notebook(notebook, _token())
         cell_id = generate_cell_id()
 
+        actual_code = (
+            f'mo.md(r"""\n{code}\n""")'
+            if cell_type == "markdown"
+            else code
+        )
+
         if nb.is_lsp:
-            await lsp_client.add_cell_lsp(nb.notebook_uri, cell_id, code, after_cell_id)
+            await lsp_client.add_cell_lsp(nb.notebook_uri, cell_id, actual_code, after_cell_id)
             return json.dumps({"cell_id": cell_id})
 
         # HTTP: translate after_cell_id → before_cell_id using cell order
@@ -311,7 +323,7 @@ async def add_cell(notebook: str, code: str, after_cell_id: str | None = None) -
             idx = cell_ids_ordered.index(after_cell_id)
             before_cell_id = cell_ids_ordered[idx + 1] if idx + 1 < len(cell_ids_ordered) else None
 
-        await client.create_cell(cell_id, code, before_cell_id)
+        await client.create_cell(cell_id, actual_code, before_cell_id)
         return json.dumps({"cell_id": cell_id})
 
     return await _safe(_run())
