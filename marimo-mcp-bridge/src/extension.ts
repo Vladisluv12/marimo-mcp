@@ -285,17 +285,64 @@ async function callMarimoApi(
         return success ? { cellId } : null;
 
     } else if (method === 'execute-and-poll-outputs') {
-        const { notebookUri, cellId, code } = params as {
+        const { notebookUri, cellId, code, timeout = 15000 } = params as {
             notebookUri: string;
             cellId: string;
             code: string;
+            timeout?: number;
         };
-        const executable = await getPythonExecutable(notebookUri);
-        await vscode.commands.executeCommand('marimo.api', {
-            method: 'execute-cells',
-            params: { notebookUri, executable, inner: { cellIds: [cellId], codes: [code] } },
+        const doc = vscode.workspace.notebookDocuments.find(d => d.uri.toString() === notebookUri);
+        if (!doc) throw new Error(`Notebook not found: ${notebookUri}`);
+
+        // Find the target cell
+        let cellIndex = -1;
+        let targetCell: vscode.NotebookCell | undefined;
+        for (let i = 0; i < doc.cellCount; i++) {
+            const cell = doc.cellAt(i);
+            const stableId = (cell.metadata as Record<string, unknown>)?.stableId;
+            if (stableId === cellId) { cellIndex = i; targetCell = cell; break; }
+        }
+        if (cellIndex === -1) throw new Error(`Cell ${cellId} not found`);
+
+        // Register output change listener BEFORE executing
+        const outputsReady = new Promise<object>((resolve) => {
+            const disposable = vscode.workspace.onDidChangeNotebookDocument((e) => {
+                if (e.notebook.uri.toString() !== notebookUri) return;
+                for (const change of e.cellChanges) {
+                    const stableId = (change.cell.metadata as Record<string, unknown>)?.stableId;
+                    if (stableId === cellId && change.outputs !== undefined) {
+                        disposable.dispose();
+                        resolve(getCellOutputs(notebookUri, cellId));
+                    }
+                }
+            });
+            setTimeout(() => { disposable.dispose(); resolve(getCellOutputs(notebookUri, cellId)); }, timeout);
         });
-        return { started: true };
+
+        // Update cell code
+        if (targetCell) {
+            const cellEdit = new vscode.WorkspaceEdit();
+            cellEdit.replace(
+                targetCell.document.uri,
+                new vscode.Range(0, 0, targetCell.document.lineCount, 0),
+                code
+            );
+            await vscode.workspace.applyEdit(cellEdit);
+        }
+
+        // Ensure notebook is the active editor (marimo checks Ki.getLastNotebookEditor)
+        const editors = vscode.window.visibleNotebookEditors;
+        const editor = editors.find(e => e.notebook.uri.toString() === notebookUri);
+        if (editor) {
+            await vscode.window.showNotebookDocument(editor.notebook, { viewColumn: editor.viewColumn });
+        }
+
+        // Execute via executeHandler → LSP → cell-op notifications → replaceOutput → event fires
+        await vscode.commands.executeCommand('notebook.cell.execute', {
+            ranges: [{ start: cellIndex, end: cellIndex + 1 }],
+            document: doc.uri,
+        });
+        return outputsReady;
 
     } else if (method === 'run-cell-native') {
         const { notebookUri, cellId, code } = params as {

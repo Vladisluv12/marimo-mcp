@@ -106,53 +106,19 @@ def format_output(result: dict) -> str:
     return "\n".join(parts) if parts else "(no output)"
 
 
-def _add_signal(code: str, signal_path: str) -> str:
-    indented = textwrap.indent(code, "    ")
-    return (
-        f"try:\n{indented}\nfinally:\n"
-        f"    import os as _mcp_os\n"
-        f"    _mcp_os.makedirs('/tmp', exist_ok=True)\n"
-        f"    open({signal_path!r}, 'w').write('1')\n"
-    )
-
-
 async def execute_and_get_visual_output(
     notebook_uri: str,
     cell_id: str,
     code: str,
-    poll_interval: float = 0.3,
     timeout: float = 15.0,
 ) -> dict:
-    signal_path = os.path.join(tempfile.gettempdir(), f"mcp_sig_{cell_id}.done")
-    try:
-        os.unlink(signal_path)
-    except FileNotFoundError:
-        pass
-
-    # Step 1: run real code via notebook.cell.execute (proper marimo pipeline → cell.outputs)
-    # Step 2: signal file lets us know when execution actually completed
-    await call_api("run-cell-native", {
+    result = await call_api("execute-and-poll-outputs", {
         "notebookUri": notebook_uri,
         "cellId": cell_id,
-        "code": _add_signal(code, signal_path),
+        "code": code,
+        "timeout": int(timeout * 1000),
     })
-
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
-    while loop.time() < deadline:
-        await asyncio.sleep(poll_interval)
-        if os.path.exists(signal_path):
-            try:
-                os.unlink(signal_path)
-            except FileNotFoundError:
-                pass
-            result = await call_api("get-cell-output", {
-                "notebookUri": notebook_uri,
-                "cellId": cell_id,
-            })
-            return result if isinstance(result, dict) else {}
-
-    return {"timeout": True}
+    return result if isinstance(result, dict) else {}
 
 
 async def delete_cell_lsp(notebook_uri: str, cell_id: str) -> object:

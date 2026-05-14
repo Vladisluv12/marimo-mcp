@@ -217,11 +217,22 @@ async def edit_and_run_cell(notebook: str, cell_id: str, code: str) -> str:
     async def _run() -> str:
         nb = await resolve_notebook(notebook, _token())
         if nb.is_lsp:
-            result = await lsp_client.execute_and_get_output(nb.notebook_uri, cell_id, code)
+            result = await lsp_client.execute_and_get_visual_output(nb.notebook_uri, cell_id, code)
+            outputs = result.get("outputs", []) if result else []
+            _STDOUT = {"application/vnd.code.notebook.stdout", "text/plain"}
+            _STDERR = {"application/vnd.code.notebook.stderr"}
+            texts, errors = [], []
+            for output in outputs:
+                for item in output.get("items", []):
+                    mime, text = item.get("mime", ""), item.get("text", "")
+                    if mime in _STDOUT and text:
+                        texts.append(text.rstrip())
+                    elif mime in _STDERR and text:
+                        errors.append(text.rstrip())
             return json.dumps({
-                "output": lsp_client.format_output(result),
-                "stdout": result.get("stdout", ""),
-                "stderr": result.get("stderr", ""),
+                "output": "\n".join(texts) if texts else "(no output)",
+                "outputs": outputs,
+                "stderr": "\n".join(errors),
             }, indent=2)
 
         client = _client(nb)
