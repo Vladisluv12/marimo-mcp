@@ -291,22 +291,59 @@ async function callMarimoApi(
             code: string;
         };
         const executable = await getPythonExecutable(notebookUri);
-        // Snapshot outputs before execution to detect changes
-        const before = JSON.stringify(getCellOutputs(notebookUri, cellId));
         await vscode.commands.executeCommand('marimo.api', {
             method: 'execute-cells',
             params: { notebookUri, executable, inner: { cellIds: [cellId], codes: [code] } },
         });
-        // Poll until outputs change from pre-execution state (handles both empty→filled and stale→updated)
-        const deadline = Date.now() + 15000;
-        while (Date.now() < deadline) {
-            await new Promise<void>(r => setTimeout(r, 300));
-            const current = JSON.stringify(getCellOutputs(notebookUri, cellId));
-            if (current !== before) {
-                return getCellOutputs(notebookUri, cellId);
-            }
+        return { started: true };
+
+    } else if (method === 'run-cell-native') {
+        const { notebookUri, cellId, code } = params as {
+            notebookUri: string;
+            cellId: string;
+            code: string;
+        };
+        const doc = vscode.workspace.notebookDocuments.find(
+            d => d.uri.toString() === notebookUri
+        );
+        if (!doc) throw new Error(`Notebook not found: ${notebookUri}`);
+
+        let cellIndex = -1;
+        let targetCell: vscode.NotebookCell | undefined;
+        for (let i = 0; i < doc.cellCount; i++) {
+            const cell = doc.cellAt(i);
+            const stableId = (cell.metadata as Record<string, unknown>)?.stableId;
+            if (stableId === cellId) { cellIndex = i; targetCell = cell; break; }
         }
-        return getCellOutputs(notebookUri, cellId);
+        if (cellIndex === -1) throw new Error(`Cell ${cellId} not found`);
+
+        // Update cell code
+        if (targetCell) {
+            const cellEdit = new vscode.WorkspaceEdit();
+            cellEdit.replace(
+                targetCell.document.uri,
+                new vscode.Range(0, 0, targetCell.document.lineCount, 0),
+                code
+            );
+            await vscode.workspace.applyEdit(cellEdit);
+        }
+
+        // Focus notebook so notebook.cell.execute has the right context
+        const editors = vscode.window.visibleNotebookEditors;
+        const editor = editors.find(e => e.notebook.uri.toString() === notebookUri);
+        if (editor) {
+            await vscode.window.showNotebookDocument(editor.notebook, {
+                viewColumn: editor.viewColumn,
+                preserveFocus: true,
+            });
+        }
+
+        // Execute via proper notebook pipeline (→ executeHandler → cell.outputs update)
+        await vscode.commands.executeCommand('notebook.cell.execute', {
+            ranges: [{ start: cellIndex, end: cellIndex + 1 }],
+            document: doc.uri,
+        });
+        return { started: true, cellIndex };
 
     } else {
         commandParams = params;
