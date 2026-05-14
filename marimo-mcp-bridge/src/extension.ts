@@ -304,22 +304,7 @@ async function callMarimoApi(
         }
         if (cellIndex === -1) throw new Error(`Cell ${cellId} not found`);
 
-        // Register output change listener BEFORE executing
-        const outputsReady = new Promise<object>((resolve) => {
-            const disposable = vscode.workspace.onDidChangeNotebookDocument((e) => {
-                if (e.notebook.uri.toString() !== notebookUri) return;
-                for (const change of e.cellChanges) {
-                    const stableId = (change.cell.metadata as Record<string, unknown>)?.stableId;
-                    if (stableId === cellId && change.outputs !== undefined) {
-                        disposable.dispose();
-                        resolve(getCellOutputs(notebookUri, cellId));
-                    }
-                }
-            });
-            setTimeout(() => { disposable.dispose(); resolve(getCellOutputs(notebookUri, cellId)); }, timeout);
-        });
-
-        // Update cell code
+        // Update cell code first
         if (targetCell) {
             const cellEdit = new vscode.WorkspaceEdit();
             cellEdit.replace(
@@ -337,7 +322,27 @@ async function callMarimoApi(
             await vscode.window.showNotebookDocument(editor.notebook, { viewColumn: editor.viewColumn });
         }
 
-        // Execute via executeHandler → LSP → cell-op notifications → replaceOutput → event fires
+        // Snapshot previous execution endTime so we only accept a NEWER execution completion.
+        const prevEndTime = targetCell?.executionSummary?.timing?.endTime ?? 0;
+
+        // Register listener AFTER applyEdit — fires only when execution ends (timing.endTime updated).
+        const outputsReady = new Promise<object>((resolve) => {
+            const disposable = vscode.workspace.onDidChangeNotebookDocument((e) => {
+                if (e.notebook.uri.toString() !== notebookUri) return;
+                for (const change of e.cellChanges) {
+                    const stableId = (change.cell.metadata as Record<string, unknown>)?.stableId;
+                    if (stableId !== cellId) continue;
+                    const newEndTime = change.cell.executionSummary?.timing?.endTime;
+                    if (newEndTime !== undefined && newEndTime > prevEndTime) {
+                        disposable.dispose();
+                        resolve(getCellOutputs(notebookUri, cellId));
+                    }
+                }
+            });
+            setTimeout(() => { disposable.dispose(); resolve(getCellOutputs(notebookUri, cellId)); }, timeout);
+        });
+
+        // Execute via executeHandler → LSP → cell-op notifications → replaceOutput → state event fires
         await vscode.commands.executeCommand('notebook.cell.execute', {
             ranges: [{ start: cellIndex, end: cellIndex + 1 }],
             document: doc.uri,
