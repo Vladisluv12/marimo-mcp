@@ -33,10 +33,14 @@ async def call_api(method: str, params: dict) -> object:
         json={"method": method, "params": params},
         timeout=30.0,
     )
-    resp.raise_for_status()
-    data = resp.json()
+    try:
+        data = resp.json()
+    except Exception:
+        resp.raise_for_status()
+        raise
     if "error" in data:
         raise RuntimeError(data["error"])
+    resp.raise_for_status()
     return data.get("result")
 
 
