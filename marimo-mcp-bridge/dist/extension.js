@@ -39,17 +39,36 @@ const vscode = __importStar(require("vscode"));
 const http = __importStar(require("http"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
-const BRIDGE_PORT = 42018;
+const BASE_PORT = 42018;
+const PORT_RANGE = 10; // try 42018–42027
 let server;
-function activate(context) {
-    server = http.createServer(handleRequest);
-    server.listen(BRIDGE_PORT, '127.0.0.1', () => {
-        console.log(`marimo-mcp-bridge listening on port ${BRIDGE_PORT}`);
-    });
-    server.on('error', (err) => {
-        if (err.code === 'EADDRINUSE') {
-            vscode.window.showWarningMessage(`marimo-mcp-bridge: port ${BRIDGE_PORT} already in use — bridge not started`);
+async function startServer() {
+    for (let port = BASE_PORT; port < BASE_PORT + PORT_RANGE; port++) {
+        const candidate = http.createServer(handleRequest);
+        const acquired = await new Promise((resolve) => {
+            candidate.once('error', (err) => {
+                if (err.code === 'EADDRINUSE') {
+                    resolve(false);
+                }
+                else {
+                    resolve(false);
+                }
+            });
+            candidate.listen(port, '127.0.0.1', () => resolve(true));
+        });
+        if (acquired) {
+            server = candidate;
+            return port;
         }
+        candidate.close();
+    }
+    throw new Error(`marimo-mcp-bridge: no free port in range ${BASE_PORT}–${BASE_PORT + PORT_RANGE - 1}`);
+}
+function activate(context) {
+    startServer().then(port => {
+        console.log(`marimo-mcp-bridge listening on port ${port}`);
+    }).catch(err => {
+        vscode.window.showWarningMessage(`marimo-mcp-bridge: ${err.message}`);
     });
     context.subscriptions.push({ dispose: () => server?.close() });
 }

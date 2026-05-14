@@ -8,28 +8,67 @@ import textwrap
 
 import httpx
 
-BRIDGE_URL = "http://127.0.0.1:42018"
+_BRIDGE_BASE_PORT = 42018
+_BRIDGE_PORT_COUNT = 10  # scan 42018–42027
 
 _http = httpx.AsyncClient()
 
 
+async def _active_bridge_urls() -> list[str]:
+    """Find all active bridge instances across VS Code windows."""
+    active = []
+    for port in range(_BRIDGE_BASE_PORT, _BRIDGE_BASE_PORT + _BRIDGE_PORT_COUNT):
+        try:
+            resp = await _http.get(f"http://127.0.0.1:{port}/health", timeout=0.3)
+            if resp.status_code == 200:
+                active.append(f"http://127.0.0.1:{port}")
+        except (httpx.ConnectError, httpx.TimeoutException):
+            pass
+    return active
+
+
 async def bridge_available() -> bool:
-    try:
-        resp = await _http.get(f"{BRIDGE_URL}/health", timeout=1.0)
-        return resp.status_code == 200
-    except (httpx.ConnectError, httpx.TimeoutException):
-        return False
+    return bool(await _active_bridge_urls())
 
 
 async def list_lsp_notebooks() -> list[dict]:
-    resp = await _http.get(f"{BRIDGE_URL}/notebooks", timeout=5.0)
-    resp.raise_for_status()
-    return resp.json()
+    """List notebooks from all active bridge instances (all VS Code windows)."""
+    bridges = await _active_bridge_urls()
+    all_notebooks: list[dict] = []
+    seen: set[str] = set()
+    for url in bridges:
+        try:
+            resp = await _http.get(f"{url}/notebooks", timeout=5.0)
+            resp.raise_for_status()
+            for nb in resp.json():
+                uri = nb.get("uri", "")
+                if uri not in seen:
+                    all_notebooks.append(nb)
+                    seen.add(uri)
+        except Exception:
+            pass
+    return all_notebooks
+
+
+async def _bridge_for(notebook_uri: str) -> str:
+    """Find the bridge instance that has this notebook open."""
+    bridges = await _active_bridge_urls()
+    for url in bridges:
+        try:
+            resp = await _http.get(f"{url}/notebooks", timeout=1.0)
+            if resp.status_code == 200:
+                if any(nb.get("uri") == notebook_uri for nb in resp.json()):
+                    return url
+        except Exception:
+            pass
+    return f"http://127.0.0.1:{_BRIDGE_BASE_PORT}"
 
 
 async def call_api(method: str, params: dict) -> object:
+    notebook_uri = str(params.get("notebookUri", ""))
+    bridge_url = await _bridge_for(notebook_uri) if notebook_uri else f"http://127.0.0.1:{_BRIDGE_BASE_PORT}"
     resp = await _http.post(
-        f"{BRIDGE_URL}/api",
+        f"{bridge_url}/api",
         json={"method": method, "params": params},
         timeout=30.0,
     )
