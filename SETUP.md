@@ -17,7 +17,7 @@
 ## Шаг 1: Клонировать и собрать
 
 ```bash
-git clone <repo-url> ~/marimo-mcp
+git clone https://github.com/Vladisluv12/marimo-mcp.git ~/marimo-mcp
 cd ~/marimo-mcp
 uv sync                # создаёт .venv и ставит зависимости
 ```
